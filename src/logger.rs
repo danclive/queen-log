@@ -6,7 +6,6 @@ use std::fmt;
 
 use queue::MessagesQueue;
 
-
 lazy_static! {
     pub static ref LOG: Log = Log::init();
 }
@@ -204,15 +203,6 @@ impl Logger for DefaultLogger {
                 Color::Red
             }
         };
-
-        // println!("{}", Print::black("fff"));
-        // println!("{}", Print::red("fff"));
-        // println!("{}", Print::green("fff"));
-        // println!("{}", Print::yellow("fff"));
-        // println!("{}", Print::blue("fff"));
-        // println!("{}", Print::purple("fff"));
-        // println!("{}", Print::cyan("fff"));
-        // println!("{}", Print::white("fff"));
 
         let time_now: DateTime<Local> = Local::now();
 
