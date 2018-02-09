@@ -207,11 +207,13 @@ impl Logger for DefaultLogger {
         let time_now: DateTime<Local> = Local::now();
 
         println!(
-            "{} {} | {} | {}",
+            "{} {} {} {} {} {}",
             Print::new(format!("[{}]", record.metadata.target)).foreground(color),
             Print::new(time_now.format("%Y/%m/%d - %H:%M:%S %z").to_string()).foreground(color),
+            Print::new("| {").foreground(color),
             Print::new(&record.message).foreground(color),
-            Print::new(format!("module:{:?} file:{:?} line:{:?}", &record.module_path, &record.file, &record.line)).foreground(color)
+            Print::new("} |").foreground(color),
+            Print::new(format!("file:{:?} line:{:?}", &record.file, &record.line)).foreground(color)
         );
     }
 }
