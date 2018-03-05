@@ -206,6 +206,9 @@ impl Logger for DefaultLogger {
 
         let time_now: DateTime<Local> = Local::now();
 
+        let file = record.file.clone().unwrap_or_default();
+        let line = record.line.clone().unwrap_or_default();
+
         println!(
             "{} {} {} {} {} {}",
             Print::new(format!("[{}]", record.metadata.target)).foreground(color),
@@ -213,7 +216,7 @@ impl Logger for DefaultLogger {
             Print::new("| {").foreground(color),
             Print::new(&record.message).foreground(color),
             Print::new("} |").foreground(color),
-            Print::new(format!("file:{:?} line:{:?}", &record.file, &record.line)).foreground(color)
+            Print::new(format!("{}:{}", file, line)).foreground(color)
         );
     }
 }
