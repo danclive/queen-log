@@ -1,17 +1,33 @@
+use std::io::{Write, Stdout, stdout};
+
 use log::{self, Log, Metadata, Record, SetLoggerError, Level, LevelFilter};
 use env_logger::filter::Filter;
-use chrono::{Local, DateTime};
+use chrono::{Local, DateTime, SecondsFormat};
 
 use color::{Print, Color};
 
 pub mod color;
 
-pub struct QueenLogger {
-    filter: Filter
+pub struct QueenLogger<P> {
+    filter: Filter,
+    log_print: P,
+    show_color: bool
 }
 
-impl QueenLogger {
-    fn new() -> QueenLogger {
+pub trait LogPrint {
+    fn println(&self, s: &impl std::fmt::Display);
+}
+
+impl LogPrint for Stdout {
+    fn println(&self, s: &impl std::fmt::Display) {
+        let mut handle = self.lock();
+        let _ = writeln!(handle, "{}", s);
+        let _ = handle.flush();
+    }
+}
+
+impl<P: LogPrint> QueenLogger<P> {
+    fn new(log_print: P, show_color: bool) -> Self {
         use env_logger::filter::Builder;
         let mut builder = Builder::new();
 
@@ -19,13 +35,21 @@ impl QueenLogger {
             builder.parse(filter);
         }
 
-        QueenLogger {
-            filter: builder.build()
+        Self {
+            filter: builder.build(),
+            log_print,
+            show_color
         }
     }
 }
 
-impl Log for QueenLogger {
+impl Default for QueenLogger<Stdout> {
+    fn default() -> Self {
+        QueenLogger::new(stdout(), true)
+    }
+}
+
+impl<W: LogPrint + Sync + Send> Log for QueenLogger<W> {
     fn enabled(&self, metadata: &Metadata) -> bool {
         self.filter.enabled(metadata)
     }
@@ -52,16 +76,19 @@ impl Log for QueenLogger {
 
             let time_now: DateTime<Local> = Local::now();
 
-            println!(
-                "{} {} {} {} {} {} {}",
-                Print::new(format!("{}: ", level)).foreground(color),
-                Print::new(format!("{}", record.target())).foreground(color),
-                Print::new(time_now.format("%Y/%m/%d - %H:%M:%S %z").to_string()).foreground(color),
-                Print::new("| {").foreground(color),
-                Print::new(format!("{}", record.args())).foreground(color),
-                Print::new("} |").foreground(color),
-                Print::new(format!("{}:{}", record.file().unwrap_or("unknow"), record.line().unwrap_or(0))).foreground(color)
-            );
+            let s = format!("[{} {} {}] {} | {}",
+                        time_now.to_rfc3339_opts(SecondsFormat::Millis, true),
+                        level,
+                        record.target(),
+                        record.args(),
+                        record.file().unwrap_or("unknow")
+                    );
+
+            if self.show_color {
+                self.log_print.println(&Print::new(s).foreground(color));
+            } else {
+                self.log_print.println(&s);
+            }
         }
     }
 
@@ -69,6 +96,6 @@ impl Log for QueenLogger {
 }
 
 pub fn init(level: LevelFilter) -> Result<(), SetLoggerError> {
-    log::set_boxed_logger(Box::new(QueenLogger::new()))
+    log::set_boxed_logger(Box::new(QueenLogger::default()))
         .map(|()| log::set_max_level(level))
 }
