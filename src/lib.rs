@@ -1,12 +1,14 @@
 use std::io::{Write, Stdout, stdout};
+use std::time::SystemTime;
 
 use log::{self, Log, Metadata, Record, SetLoggerError, Level, LevelFilter};
-use env_logger::filter::Filter;
-use chrono::{Local, DateTime, SecondsFormat};
+use filter::Filter;
+use humantime;
 
 use color::{Print, Color};
 
 pub mod color;
+pub mod filter;
 
 pub struct QueenLogger<P> {
     filter: Filter,
@@ -27,16 +29,9 @@ impl LogPrint for Stdout {
 }
 
 impl<P: LogPrint> QueenLogger<P> {
-    fn new(log_print: P, show_color: bool) -> Self {
-        use env_logger::filter::Builder;
-        let mut builder = Builder::new();
-
-        if let Ok(ref filter) = std::env::var("QUEEN_LOG_LEVEL") {
-            builder.parse(filter);
-        }
-
+    pub fn new(log_print: P, filter: Filter, show_color: bool) -> Self {
         Self {
-            filter: builder.build(),
+            filter,
             log_print,
             show_color
         }
@@ -45,11 +40,17 @@ impl<P: LogPrint> QueenLogger<P> {
 
 impl Default for QueenLogger<Stdout> {
     fn default() -> Self {
-        QueenLogger::new(stdout(), true)
+        let mut builder = filter::Builder::new();
+
+        if let Ok(ref filter) = std::env::var("LOG_LEVEL") {
+            builder.parse(filter);
+        }
+
+        QueenLogger::new(stdout(), builder.build(), true)
     }
 }
 
-impl<W: LogPrint + Sync + Send> Log for QueenLogger<W> {
+impl<P: LogPrint + Sync + Send> Log for QueenLogger<P> {
     fn enabled(&self, metadata: &Metadata) -> bool {
         self.filter.enabled(metadata)
     }
@@ -74,14 +75,13 @@ impl<W: LogPrint + Sync + Send> Log for QueenLogger<W> {
                 }
             };
 
-            let time_now: DateTime<Local> = Local::now();
-
-            let s = format!("[{} {} {}] {} | {}",
-                        time_now.to_rfc3339_opts(SecondsFormat::Millis, true),
+            let s = format!("[{} {} {}] {} | {}:{}",
+                        humantime::format_rfc3339_millis(SystemTime::now()),
                         level,
                         record.target(),
                         record.args(),
-                        record.file().unwrap_or("unknow")
+                        record.file().unwrap_or("unknow"),
+                        record.line().unwrap_or_default()
                     );
 
             if self.show_color {
@@ -97,5 +97,13 @@ impl<W: LogPrint + Sync + Send> Log for QueenLogger<W> {
 
 pub fn init(level: LevelFilter) -> Result<(), SetLoggerError> {
     log::set_boxed_logger(Box::new(QueenLogger::default()))
+        .map(|()| log::set_max_level(level))
+}
+
+pub fn init_with_logger<P: LogPrint + Sync + Send + 'static>(
+    level: LevelFilter,
+    logger: QueenLogger<P>
+) -> Result<(), SetLoggerError> {
+    log::set_boxed_logger(Box::new(logger))
         .map(|()| log::set_max_level(level))
 }
