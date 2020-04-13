@@ -1,13 +1,12 @@
 use std::io::{Write, Stdout, stdout};
-use std::time::SystemTime;
 
 use log::{self, Log, Metadata, Record, SetLoggerError, Level, LevelFilter};
 use filter::Filter;
-use humantime;
 
-use color::{Print, Color};
+use chrono::{Local, DateTime};
 
-pub mod color;
+use colored::Colorize;
+
 pub mod filter;
 
 pub struct QueenLogger<P> {
@@ -57,27 +56,11 @@ impl<P: LogPrint + Sync + Send> Log for QueenLogger<P> {
 
     fn log(&self, record: &Record) {
         if self.filter.matches(record) {
-            let (color, level) = match record.level() {
-                Level::Trace => {
-                    (Color::Purple, "TRACE")
-                }
-                Level::Debug => {
-                    (Color::Blue, "DEBUG")
-                }
-                Level::Info => {
-                    (Color::Green, "INFO")
-                }
-                Level::Warn => {
-                    (Color::Yellow, "WARN")
-                }
-                Level::Error => {
-                    (Color::Red, "ERROR")
-                }
-            };
+            let time_now: DateTime<Local> = Local::now();
 
             let s = format!("[{} {} {}] {} | {}:{}",
-                        humantime::format_rfc3339_millis(SystemTime::now()),
-                        level,
+                        time_now.format("%Y/%m/%d %H:%M:%S %z").to_string(),
+                        record.level(),
                         record.target(),
                         record.args(),
                         record.file().unwrap_or("unknow"),
@@ -85,7 +68,23 @@ impl<P: LogPrint + Sync + Send> Log for QueenLogger<P> {
                     );
 
             if self.show_color {
-                self.log_print.println(&Print::new(s).foreground(color));
+                match record.level() {
+                    Level::Trace => {
+                        self.log_print.println(&s.purple().bold());
+                    }
+                    Level::Debug => {
+                        self.log_print.println(&s.blue().bold());
+                    }
+                    Level::Info => {
+                        self.log_print.println(&s.green().bold());
+                    }
+                    Level::Warn => {
+                        self.log_print.println(&s.yellow().bold());
+                    }
+                    Level::Error => {
+                        self.log_print.println(&s.red().bold());
+                    }
+                }
             } else {
                 self.log_print.println(&s);
             }
