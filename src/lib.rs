@@ -58,7 +58,7 @@ impl<P: LogPrint + Sync + Send> Log for QueenLogger<P> {
         if self.filter.matches(record) {
             let time_now: DateTime<Local> = Local::now();
 
-            let s = format!("[{} {} {}] {} | {}:{}",
+            let s = format!("[{}] {} | {} | {} | {}:{}",
                         time_now.format("%Y/%m/%d %H:%M:%S %z").to_string(),
                         record.level(),
                         record.target(),
