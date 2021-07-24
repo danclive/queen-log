@@ -5,39 +5,83 @@ use filter::Filter;
 
 use chrono::{Local, DateTime};
 
-use colored::Colorize;
+use termcolor::{Buffer, Color, ColorSpec, WriteColor};
+use once_cell::sync::Lazy;
 
 pub mod filter;
 
-pub struct QueenLogger<P> {
+pub struct Logger<Writer> {
     filter: Filter,
-    log_print: P,
-    show_color: bool
+    writer: Writer,
 }
 
-pub trait LogPrint {
-    fn println(&self, s: &impl std::fmt::Display);
+static IS_STDOUT: Lazy<bool> = Lazy::new(|| atty::is(atty::Stream::Stdout));
+pub trait Writer {
+    fn writer(&self, record: &Record);
 }
 
-impl LogPrint for Stdout {
-    fn println(&self, s: &impl std::fmt::Display) {
-        let mut handle = self.lock();
-        let _ = writeln!(handle, "{}", s);
-        let _ = handle.flush();
-    }
-}
+impl Writer for Stdout {
+    fn writer(&self, record: &Record) {
+        let time_now: DateTime<Local> = Local::now();
 
-impl<P: LogPrint> QueenLogger<P> {
-    pub fn new(log_print: P, filter: Filter, show_color: bool) -> Self {
-        Self {
-            filter,
-            log_print,
-            show_color
+        let s = format!("[{}] {} | {} | {} | {}:{}",
+                    time_now.format("%Y/%m/%d %H:%M:%S %z").to_string(),
+                    record.level(),
+                    record.target(),
+                    record.args(),
+                    record.file().unwrap_or("unknow"),
+                    record.line().unwrap_or_default()
+                );
+
+        if *IS_STDOUT {
+            let mut buffer = Buffer::ansi();
+            let mut color_spec = ColorSpec::new();
+
+            match record.level() {
+                Level::Trace => {
+                    color_spec.set_fg(Some(Color::Magenta));
+                },
+                Level::Debug => {
+                    color_spec.set_fg(Some(Color::Blue));
+                },
+                Level::Info => {
+                    color_spec.set_fg(Some(Color::Green));
+                },
+                Level::Warn => {
+                    color_spec.set_fg(Some(Color::Yellow));
+                },
+                Level::Error => {
+                    color_spec.set_fg(Some(Color::Red));
+                }
+            }
+
+            color_spec.set_bold(true);
+            let _ = buffer.set_color(&color_spec);
+            let _ = buffer.write_all(s.as_bytes());
+
+            let mut handle = self.lock();
+            let _ = handle.write_all(buffer.as_slice());
+            let _ = handle.write_all(b"\n");
+            let _ = handle.flush();
+        } else {
+            let mut handle = self.lock();
+            let _ = handle.write_all(s.as_bytes());
+            let _ = handle.write_all(b"\n");
+            let _ = handle.flush();
         }
     }
 }
 
-impl Default for QueenLogger<Stdout> {
+impl<W: Writer> Logger<W> {
+    pub fn new(filter: Filter, writer: W) -> Self {
+        Self {
+            filter,
+            writer
+        }
+    }
+}
+
+impl Default for Logger<Stdout> {
     fn default() -> Self {
         let mut builder = filter::Builder::new();
 
@@ -45,49 +89,18 @@ impl Default for QueenLogger<Stdout> {
             builder.parse(filter);
         }
 
-        QueenLogger::new(stdout(), builder.build(), true)
+        Logger::new( builder.build(), stdout())
     }
 }
 
-impl<P: LogPrint + Sync + Send> Log for QueenLogger<P> {
+impl<P: Writer + Sync + Send> Log for Logger<P> {
     fn enabled(&self, metadata: &Metadata) -> bool {
         self.filter.enabled(metadata)
     }
 
     fn log(&self, record: &Record) {
         if self.filter.matches(record) {
-            let time_now: DateTime<Local> = Local::now();
-
-            let s = format!("[{}] {} | {} | {} | {}:{}",
-                        time_now.format("%Y/%m/%d %H:%M:%S %z").to_string(),
-                        record.level(),
-                        record.target(),
-                        record.args(),
-                        record.file().unwrap_or("unknow"),
-                        record.line().unwrap_or_default()
-                    );
-
-            if self.show_color {
-                match record.level() {
-                    Level::Trace => {
-                        self.log_print.println(&s.purple().bold());
-                    }
-                    Level::Debug => {
-                        self.log_print.println(&s.blue().bold());
-                    }
-                    Level::Info => {
-                        self.log_print.println(&s.green().bold());
-                    }
-                    Level::Warn => {
-                        self.log_print.println(&s.yellow().bold());
-                    }
-                    Level::Error => {
-                        self.log_print.println(&s.red().bold());
-                    }
-                }
-            } else {
-                self.log_print.println(&s);
-            }
+            self.writer.writer(record);
         }
     }
 
@@ -95,13 +108,13 @@ impl<P: LogPrint + Sync + Send> Log for QueenLogger<P> {
 }
 
 pub fn init(level: LevelFilter) -> Result<(), SetLoggerError> {
-    log::set_boxed_logger(Box::new(QueenLogger::default()))
+    log::set_boxed_logger(Box::new(Logger::default()))
         .map(|()| log::set_max_level(level))
 }
 
-pub fn init_with_logger<P: LogPrint + Sync + Send + 'static>(
+pub fn init_with_logger<P: Writer + Sync + Send + 'static>(
     level: LevelFilter,
-    logger: QueenLogger<P>
+    logger: Logger<P>
 ) -> Result<(), SetLoggerError> {
     log::set_boxed_logger(Box::new(logger))
         .map(|()| log::set_max_level(level))
